@@ -117,7 +117,7 @@ ok("ignores `gh gist list` output", arts.length === 0);
 // PR state badges (incl. closed)
 console.log("badge:");
 const { badge } = require("../bin/cli.js");
-const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+const strip = (s) => s.replace(new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g"), "");
 ok("merged -> merged", strip(badge({ state: "MERGED" })) === "merged");
 ok("closed -> closed", strip(badge({ state: "CLOSED" })) === "closed");
 ok("closed wins over ci/draft", strip(badge({ state: "CLOSED", isDraft: true, ci: "failed" })) === "closed");
