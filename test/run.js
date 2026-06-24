@@ -88,4 +88,30 @@ ok("constructs URL from --repo + number", arts.length === 1
 ok("empty transcript path -> []", sessionArtifacts("").length === 0);
 ok("missing dir -> []", sessionArtifacts("/no/such/dir").length === 0);
 
+// 8) created gist on github.com
+dir = writeSession([
+  start("h", "GH_HOST=github.com gh gist create notes.md"),
+  complete("h", "https://gist.github.com/kamil/0426cb4d88b5bf1157df648c46a094d0\n"),
+]);
+arts = sessionArtifacts(dir);
+ok("detects a created gist (github.com)",
+   arts.length === 1 && arts[0].kind === "gist" && arts[0].origin === "created");
+
+// 9) created gist on GHES (gist.ghe.io)
+dir = writeSession([
+  start("i", "GH_HOST=ghe.io gh gist create notes.md"),
+  complete("i", "https://gist.ghe.io/kamil-gwozdz/128d909c20fcb90e66e69c12370ce0bf\n"),
+]);
+arts = sessionArtifacts(dir);
+ok("detects a created gist (GHES gist.ghe.io)", arts.length === 1 && arts[0].kind === "gist"
+   && arts[0].url === "https://gist.ghe.io/kamil-gwozdz/128d909c20fcb90e66e69c12370ce0bf");
+
+// 10) `gh gist list` output (a read) must NOT be detected
+dir = writeSession([
+  start("j", "GH_HOST=ghe.io gh gist list"),
+  complete("j", "https://gist.ghe.io/kamil/2c4ba8541437b937f038e19d9badd688  notes\n"),
+]);
+arts = sessionArtifacts(dir);
+ok("ignores `gh gist list` output", arts.length === 0);
+
 console.log(`\n${pass} passed`);
