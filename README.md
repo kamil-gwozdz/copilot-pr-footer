@@ -66,19 +66,50 @@ Then open a new Copilot CLI session. That's it.
 Copilot CLI's custom status line runs a command every few seconds and passes a
 JSON payload on stdin that includes `session_id` and `transcript_path`. This tool:
 
-1. Reads `<transcript_path>/events.jsonl` and joins each tool's
-   `execution_start` (the command) with its `execution_complete` (the output) by
-   tool-call id.
-2. Counts a URL only when its command was a real `gh pr/issue/gist create`
-   (→ created) or a mutating `gh pr/issue …` (edit, comment, review, merge, ready,
-   close, …) (→ updated). Heredoc bodies are stripped so a PR body that mentions
-   `gh pr create` can't cause a false positive.
+1. Reads `<transcript_path>/events.jsonl` and detects artifact mutations from three
+   kinds of events:
+   - **Shell `gh` commands** — joins each tool's `execution_start` (the command) with
+     its `execution_complete` (the output) by tool-call id.
+   - **MCP-server / extension tools** — `external_tool.requested` calls (e.g. the
+     [GitHub MCP server](https://github.com/github/github-mcp-server)). These are
+     classified by tool name and resolved from the call's structured arguments
+     (`{owner/repo, number}`) or an explicit url field.
+   - **Remote shell-exec tools** — tools that run a command elsewhere (e.g. in a
+     codespace) are treated like a local `gh` command.
+2. Counts a URL only when it was a real **create** (`gh pr/issue/gist create`, or a
+   `create_*` tool → created) or a **mutation** (`gh pr/issue …` edit/comment/review/
+   merge/ready/close/…, or an `update_*`/`merge_*`/`add_*_comment` tool → updated).
+   Read-only tools (`get_*`, `list_*`, `wait_*`, …) and heredoc bodies that merely
+   mention `gh pr create` are ignored, so neither causes a false positive.
 3. Resolves live PR state via `gh pr view --json …`, cached at
    `~/.copilot/copilot-pr-footer/pr-cache.json` and refreshed by a **detached**
    background process so the footer stays instant.
 
+The official GitHub MCP server tools are recognized out of the box. Any unknown tool
+is still classified by a generic verb in its name, so most tools work with no setup.
+
 Works for every session that has an event log (present since the first Copilot CLI
 sessions). Nothing is sent anywhere; all reads are local and read-only.
+
+### Registering your own tools
+
+If you use a private MCP server or Copilot CLI extension whose tool names this tool
+doesn't recognize, register them in `~/.copilot/copilot-pr-footer/config.json` under
+`externalTools` — a map of tool name to `created`, `updated`, or `ignore` (to silence
+a noisy default). This stays on your machine; nothing is baked into the package.
+
+```json
+{
+  "externalTools": {
+    "my_pr_body_updater": "updated",
+    "my_thing_creator": "created",
+    "some_noisy_tool": "ignore"
+  }
+}
+```
+
+The tool must pass `{owner/repo, number}` (or a gist id, or a url field) in its
+arguments — or the artifact url in its result — for the link to resolve.
 
 ## Uninstall
 
