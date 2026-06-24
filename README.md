@@ -9,7 +9,7 @@ Show the pull requests, issues, and gists your **GitHub Copilot CLI** session
 Copilot's status-line footer.
 
 ```
-⎇ +reposd#2488 merged  +pullsd#1340 ci✓ appr  ~datadog-monitoring#50669 ci…
+⎇ +reposd#2488 merged  +rails#1340 ci✓ appr  ~ruby#50669 ci…
 ```
 
 - `+` (green) = the session **created** it · `~` (blue) = the session **updated** it
