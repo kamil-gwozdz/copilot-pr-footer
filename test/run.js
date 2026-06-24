@@ -179,6 +179,24 @@ ok("user-configured external tool is detected", arts.length === 1 && arts[0].kin
    && arts[0].origin === "updated" && arts[0].url === "https://github.com/acme/widgets/pull/5");
 process.env.HOME = prevHome; if (prevUP === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUP;
 
+// 18) config heuristic:false disables the verb fallback but keeps known defaults
+const cfgDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cxpf-cfg2-"));
+process.env.HOME = cfgDir2; process.env.USERPROFILE = cfgDir2;
+delete require.cache[require.resolve("../lib/artifacts")];
+const fresh2 = require("../lib/artifacts");
+fs.mkdirSync(path.join(cfgDir2, ".copilot", "copilot-pr-footer"), { recursive: true });
+fs.writeFileSync(path.join(cfgDir2, ".copilot", "copilot-pr-footer", "config.json"),
+  JSON.stringify({ heuristic: false }));
+dir = writeSession([
+  ev({ type: "external_tool.requested", data: { requestId: "h1", toolCallId: "h1", toolName: "edit_something_unknown", arguments: { repo: "acme/widgets", pr_number: 5 } } }),
+  ev({ type: "external_tool.requested", data: { requestId: "h2", toolCallId: "h2", toolName: "update_issue", arguments: { owner: "acme", repo: "widgets", issue_number: 9 } } }),
+]);
+arts = fresh2.sessionArtifacts(dir);
+ok("heuristic:false ignores unknown tools but keeps GitHub MCP defaults",
+   arts.length === 1 && arts[0].kind === "issue" && arts[0].url === "https://github.com/acme/widgets/issues/9");
+process.env.HOME = prevHome; if (prevUP === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUP;
+delete require.cache[require.resolve("../lib/artifacts")];
+
 // PR state badges (incl. closed)
 console.log("badge:");
 const { badge } = require("../bin/cli.js");

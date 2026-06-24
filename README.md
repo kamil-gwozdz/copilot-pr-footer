@@ -111,6 +111,14 @@ a noisy default). This stays on your machine; nothing is baked into the package.
 The tool must pass `{owner/repo, number}` (or a gist id, or a url field) in its
 arguments — or the artifact url in its result — for the link to resolve.
 
+Unknown tools are classified by a generic verb in their name (the **heuristic**),
+which is on by default. To rely solely on the built-in GitHub MCP defaults plus the
+tools you register above, turn it off:
+
+```json
+{ "heuristic": false }
+```
+
 ## Uninstall
 
 ```sh
