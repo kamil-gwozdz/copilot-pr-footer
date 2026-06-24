@@ -180,17 +180,21 @@ After install, open a new Copilot CLI session. Requires GitHub CLI (gh) for PR
 state badges; without it the footer still lists artifacts and shows a hint.`);
 }
 
-const cmd = process.argv[2];
-switch (cmd) {
-  case "render": render(); break;
-  case "fetch": fetchAndCache(process.argv.slice(3)); break;
-  case "install": install(); break;
-  case "uninstall": uninstall(); break;
-  case "doctor": doctor(); break;
-  case "disable-gh-warning": setGhWarning(true); break;
-  case "enable-gh-warning": setGhWarning(false); break;
-  case "postinstall":
-    console.log("copilot-pr-footer installed. Run `copilot-pr-footer install` to enable the footer.");
-    break;
-  default: help();
+if (require.main === module) {
+  const cmd = process.argv[2];
+  switch (cmd) {
+    case "render": render(); break;
+    case "fetch": fetchAndCache(process.argv.slice(3)); break;
+    case "install": install(); break;
+    case "uninstall": uninstall(); break;
+    case "doctor": doctor(); break;
+    case "disable-gh-warning": setGhWarning(true); break;
+    case "enable-gh-warning": setGhWarning(false); break;
+    case "postinstall":
+      console.log("copilot-pr-footer installed. Run `copilot-pr-footer install` to enable the footer.");
+      break;
+    default: help();
+  }
 }
+
+module.exports = { badge, label };

@@ -114,4 +114,16 @@ dir = writeSession([
 arts = sessionArtifacts(dir);
 ok("ignores `gh gist list` output", arts.length === 0);
 
+// PR state badges (incl. closed)
+console.log("badge:");
+const { badge } = require("../bin/cli.js");
+const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+ok("merged -> merged", strip(badge({ state: "MERGED" })) === "merged");
+ok("closed -> closed", strip(badge({ state: "CLOSED" })) === "closed");
+ok("closed wins over ci/draft", strip(badge({ state: "CLOSED", isDraft: true, ci: "failed" })) === "closed");
+ok("open draft -> draft", strip(badge({ state: "OPEN", isDraft: true })) === "draft");
+ok("open ci passed + approved", strip(badge({ state: "OPEN", ci: "passed", review: "APPROVED" })) === "ci\u2713 appr");
+ok("open ci running + review required", strip(badge({ state: "OPEN", ci: "running", review: "REVIEW_REQUIRED" })) === "ci\u2026 rev?");
+ok("error -> no badge", badge({ error: "x" }) === "");
+
 console.log(`\n${pass} passed`);
