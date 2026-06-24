@@ -91,17 +91,27 @@ npm uninstall -g copilot-pr-footer
 
 Releases follow the npm convention of **semver tags `vX.Y.Z`**. Pushing such a tag
 triggers the `publish` workflow, which lints, tests, verifies the tag matches
-`package.json`, and runs `npm publish --provenance`.
+`package.json`, and runs `npm publish`.
 
 ```sh
 npm version patch     # or minor / major — bumps package.json and creates the vX.Y.Z tag
 git push --follow-tags
 ```
 
-One-time setup: add an **`NPM_TOKEN`** repository secret (an npm
-[automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens)) under
-*Settings → Secrets and variables → Actions*. Provenance needs no extra secret — it
-uses the workflow's OIDC identity (`id-token: write`).
+Publishing uses npm [**Trusted Publishing**](https://docs.npmjs.com/trusted-publishers/)
+(OIDC) — **no `NPM_TOKEN` secret**. Short-lived credentials are minted per run from the
+workflow's OIDC identity (`id-token: write`), and provenance is generated automatically.
+
+One-time setup on [npmjs.com](https://www.npmjs.com): *Package → Settings → Trusted
+Publisher → GitHub Actions*, then enter:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `kamil-gwozdz` |
+| Repository | `copilot-pr-footer` |
+| Workflow filename | `publish.yml` |
+
+Fields are case-sensitive and must match exactly (including the `.yml` extension).
 
 ## Development
 
