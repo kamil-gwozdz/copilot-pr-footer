@@ -1,5 +1,9 @@
 # copilot-pr-footer
 
+[![ci](https://github.com/kamil-gwozdz/copilot-pr-footer/actions/workflows/ci.yml/badge.svg)](https://github.com/kamil-gwozdz/copilot-pr-footer/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/copilot-pr-footer.svg)](https://www.npmjs.com/package/copilot-pr-footer)
+[![license: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Show the pull requests, issues, and gists your **GitHub Copilot CLI** session
 **created** or **updated** — with live **CI / review / merge** state — right in
 Copilot's status-line footer.
@@ -74,6 +78,30 @@ sessions). Nothing is sent anywhere; all reads are local and read-only.
 ```sh
 copilot-pr-footer uninstall
 npm uninstall -g copilot-pr-footer
+```
+
+## Releasing (maintainers)
+
+Releases follow the npm convention of **semver tags `vX.Y.Z`**. Pushing such a tag
+triggers the `publish` workflow, which lints, tests, verifies the tag matches
+`package.json`, and runs `npm publish --provenance`.
+
+```sh
+npm version patch     # or minor / major — bumps package.json and creates the vX.Y.Z tag
+git push --follow-tags
+```
+
+One-time setup: add an **`NPM_TOKEN`** repository secret (an npm
+[automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens)) under
+*Settings → Secrets and variables → Actions*. Provenance needs no extra secret — it
+uses the workflow's OIDC identity (`id-token: write`).
+
+## Development
+
+```sh
+npm install
+npm run lint
+npm test
 ```
 
 ## License

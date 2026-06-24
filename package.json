@@ -16,6 +16,7 @@
   },
   "scripts": {
     "postinstall": "node bin/cli.js postinstall || true",
+    "lint": "eslint .",
     "test": "node test/run.js"
   },
   "keywords": [
@@ -31,6 +32,11 @@
   ],
   "license": "MIT",
   "author": "kamil-gwozdz",
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kamil-gwozdz/copilot-pr-footer.git"
