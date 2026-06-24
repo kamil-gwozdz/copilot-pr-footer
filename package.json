@@ -1,0 +1,42 @@
+{
+  "name": "copilot-pr-footer",
+  "version": "0.1.0",
+  "description": "Show the PRs/issues/gists your GitHub Copilot CLI session created or updated — with live CI/review/merge state — in the Copilot status-line footer.",
+  "bin": {
+    "copilot-pr-footer": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "postinstall": "node bin/cli.js postinstall || true",
+    "test": "node test/run.js"
+  },
+  "keywords": [
+    "github",
+    "copilot",
+    "copilot-cli",
+    "statusline",
+    "status-line",
+    "footer",
+    "pull-request",
+    "ci",
+    "gh"
+  ],
+  "license": "MIT",
+  "author": "kamil-gwozdz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kamil-gwozdz/copilot-pr-footer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kamil-gwozdz/copilot-pr-footer/issues"
+  },
+  "homepage": "https://github.com/kamil-gwozdz/copilot-pr-footer#readme"
+}
