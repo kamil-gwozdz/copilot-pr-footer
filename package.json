@@ -1,6 +1,6 @@
 {
   "name": "copilot-pr-footer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Show the PRs/issues/gists your GitHub Copilot CLI session created or updated — with live CI/review/merge state — in the Copilot status-line footer.",
   "bin": {
     "copilot-pr-footer": "bin/cli.js"
