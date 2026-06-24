@@ -209,4 +209,17 @@ ok("open ci passed + approved", strip(badge({ state: "OPEN", ci: "passed", revie
 ok("open ci running + review required", strip(badge({ state: "OPEN", ci: "running", review: "REVIEW_REQUIRED" })) === "ci\u2026 rev?");
 ok("error -> no badge", badge({ error: "x" }) === "");
 
+// batched GraphQL rollup -> ci state mapping
+console.log("rollupToCi:");
+const { rollupToCi, parsePrUrl } = require("../lib/artifacts");
+ok("SUCCESS -> passed", rollupToCi("SUCCESS") === "passed");
+ok("PENDING -> running", rollupToCi("PENDING") === "running");
+ok("EXPECTED -> running", rollupToCi("EXPECTED") === "running");
+ok("FAILURE -> failed", rollupToCi("FAILURE") === "failed");
+ok("ERROR -> failed", rollupToCi("ERROR") === "failed");
+ok("null/none -> none", rollupToCi(null) === "none");
+ok("parsePrUrl extracts owner/repo/number",
+   (() => { const p = parsePrUrl("https://github.com/acme/widgets/pull/12"); return p && p.owner === "acme" && p.repo === "widgets" && p.number === "12"; })());
+ok("parsePrUrl rejects non-github.com hosts", parsePrUrl("https://ghe.io/acme/widgets/pull/12") === null);
+
 console.log(`\n${pass} passed`);

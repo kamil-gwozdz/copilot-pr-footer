@@ -81,7 +81,8 @@ JSON payload on stdin that includes `session_id` and `transcript_path`. This too
    merge/ready/close/…, or an `update_*`/`merge_*`/`add_*_comment` tool → updated).
    Read-only tools (`get_*`, `list_*`, `wait_*`, …) and heredoc bodies that merely
    mention `gh pr create` are ignored, so neither causes a false positive.
-3. Resolves live PR state via `gh pr view --json …`, cached at
+3. Resolves live PR state for **all** PRs in a single batched `gh api graphql` call
+   (state, draft, review decision, and CI rollup), cached at
    `~/.copilot/copilot-pr-footer/pr-cache.json` and refreshed by a **detached**
    background process so the footer stays instant.
 
