@@ -8,6 +8,10 @@ Show the pull requests, issues, and gists your **GitHub Copilot CLI** session
 **created** or **updated** — with live **CI / review / merge** state — right in
 Copilot's status-line footer.
 
+Examples:
+
+<img width="673" height="461" alt="Screenshot 2026-06-24 at 15 59 16" src="https://github.com/user-attachments/assets/7e5c30ed-ddc3-4475-9d05-75c63045bdae" />
+
 ```
 ⎇ +reposd#2488 merged  +rails#1340 ci✓ appr  ~ruby#50669 ci…
 ```
