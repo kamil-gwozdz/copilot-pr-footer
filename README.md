@@ -60,6 +60,17 @@ Then open a new Copilot CLI session. That's it.
 
 - `CX_FOOTER_STATE=0` — disable live PR-state badges (just list artifacts)
 - `CX_FOOTER_HINT=0` — hide the dim “no artifacts yet” placeholder
+- `CX_FOOTER_WIDTH=<n>` — pin the column budget (overrides auto-detect); `0` disables
+  truncation entirely
+
+## Fitting the terminal width
+
+The footer keeps itself within the terminal width so it never gets chopped
+mid-label or mid-hyperlink. The status-line payload carries no width, so the width
+is auto-detected from the controlling TTY; when a session touches more artifacts
+than fit, the trailing ones collapse into a single dim `+N` counter at a clean
+boundary. If auto-detect ever misses (or you want a fixed budget), set
+`CX_FOOTER_WIDTH` or a `width` number in `~/.copilot/copilot-pr-footer/config.json`.
 
 ## How it works
 

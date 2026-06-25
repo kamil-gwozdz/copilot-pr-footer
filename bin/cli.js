@@ -6,6 +6,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const {
   sessionArtifacts, prStates, fetchAndCache, ghInstalled, ghMeta,
   loadConfig, saveConfig,
@@ -52,6 +53,99 @@ function readStdin() {
   try { return fs.readFileSync(0, "utf8"); } catch { return ""; }
 }
 
+// ── width-aware truncation ───────────────────────────────────────────────────
+// Visible (printed) width of a string, ignoring SGR colors and OSC-8 hyperlink
+// escapes (so the hyperlink target never counts, only its label does).
+const ESC = String.fromCharCode(27);
+const OSC8_RE = new RegExp(ESC + "\\]8;;[^" + ESC + "]*" + ESC + "\\\\", "g");
+const SGR_RE = new RegExp(ESC + "\\[[0-9;]*m", "g");
+function visibleWidth(s) {
+  return Array.from(s.replace(OSC8_RE, "").replace(SGR_RE, "")).length;
+}
+
+// Best-effort terminal columns. The statusLine payload carries no width and the
+// command runs with a piped (non-TTY) stdout, so we walk up the process tree to
+// the Copilot CLI's controlling TTY and ask `stty` for its size. Unix-only.
+function ttyCols() {
+  if (process.platform === "win32") return 0;
+  const run = (cmd, args) => {
+    try {
+      return execFileSync(cmd, args, { stdio: ["ignore", "pipe", "ignore"], timeout: 400 })
+        .toString().trim();
+    } catch { return ""; }
+  };
+  let pid = process.ppid;
+  for (let i = 0; i < 10 && pid > 1; i++) {
+    const tty = run("ps", ["-o", "tty=", "-p", String(pid)]);
+    if (tty && tty !== "?" && tty !== "??" && tty !== "-") {
+      const dev = tty.startsWith("/") ? tty : "/dev/" + tty;
+      const size = run("stty", ["-f", dev, "size"]) || run("stty", ["-F", dev, "size"]);
+      const cols = parseInt(size.split(/\s+/)[1] || "", 10);
+      if (Number.isFinite(cols) && cols > 0) return cols;
+    }
+    const ppid = parseInt(run("ps", ["-o", "ppid=", "-p", String(pid)]), 10);
+    if (!Number.isFinite(ppid) || ppid <= 1 || ppid === pid) break;
+    pid = ppid;
+  }
+  return 0;
+}
+
+// Resolve the column budget. Explicit overrides win (CX_FOOTER_WIDTH=0 disables
+// truncation), then any width the payload happens to expose, then the live TTY.
+// 0 means "unknown" -> render everything and let the host truncate (legacy).
+function resolveWidth(payload, cfg) {
+  const pos = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const envRaw = process.env.CX_FOOTER_WIDTH;
+  if (envRaw !== undefined && /^\d+$/.test(envRaw.trim())) return parseInt(envRaw, 10);
+  if (pos((cfg || {}).width)) return pos(cfg.width);
+  const p = payload || {};
+  for (const v of [p.columns, p.cols, p.width, p.terminal_width, p.terminalWidth,
+    p.terminal && (p.terminal.columns || p.terminal.width),
+    p.screen && (p.screen.columns || p.screen.width)]) {
+    if (pos(v)) return pos(v);
+  }
+  if (process.stdout && pos(process.stdout.columns)) return pos(process.stdout.columns);
+  if (pos(process.env.COLUMNS)) return pos(process.env.COLUMNS);
+  return ttyCols();
+}
+
+// Join chips (each {s, w}) into one line that fits `width` columns. Drops trailing
+// chips that don't fit and appends a single dim "+N" overflow counter, always at a
+// chip boundary so a hyperlink/label is never cut mid-escape. `hidden` is the count
+// of artifacts already omitted (per-kind cap). width<=0 disables truncation.
+const SEP = "  ";
+function composeLine(chips, hidden, width) {
+  const marker = (n) => `${DIM}+${n}${RESET}`;
+  const markerVis = (n) => 2 + String(n).length; // " +" + digits
+  const joinAll = () => {
+    let s = chips.map((c) => c.s).join(SEP);
+    if (hidden > 0) s += ` ${marker(hidden)}`;
+    return s;
+  };
+  if (!width || width <= 0) return joinAll();
+
+  const budget = Math.max(1, width - 1); // leave the last column untouched
+  const fullVis = chips.reduce((n, c) => n + c.w, 0)
+    + Math.max(0, chips.length - 1) * SEP.length
+    + (hidden > 0 ? markerVis(hidden) : 0);
+  if (fullVis <= budget) return joinAll();
+
+  const shown = [];
+  let used = 0;
+  for (let i = 0; i < chips.length; i++) {
+    const lead = shown.length ? SEP.length : 0;
+    const willDrop = hidden + (chips.length - 1 - i);
+    const reserve = willDrop > 0 ? markerVis(willDrop) : 0;
+    if (used + lead + chips[i].w + reserve <= budget) {
+      shown.push(chips[i].s); used += lead + chips[i].w;
+    } else break;
+  }
+  const total = hidden + (chips.length - shown.length);
+  let line = shown.join(SEP);
+  if (total > 0) line += `${shown.length ? " " : ""}${marker(total)}`;
+  return line;
+}
+
 // ── render: the statusLine command ───────────────────────────────────────────
 function render() {
   let payload = {};
@@ -74,35 +168,41 @@ function render() {
   for (const k of Object.keys(by))
     by[k].sort((x, y) => (x.origin === "created" ? 0 : 1) - (y.origin === "created" ? 0 : 1));
 
+  const cfg = loadConfig();
   const showState = process.env.CX_FOOTER_STATE !== "0";
   const prUrls = (by.pr || []).map((a) => a.url);
   const states = showState ? prStates(prUrls) : {};
 
-  const segs = [];
+  const chips = [];
+  let hidden = 0;
   for (const k of ["pr", "issue", "gist", "codespace"]) {
     const entries = by[k];
     if (!entries) continue;
     const shown = entries.slice(0, MAX);
-    const items = shown.map((a) => {
+    hidden += entries.length - shown.length;
+    shown.forEach((a, idx) => {
       const mark = MARK[a.origin] || "";
       const text = link(a.url, label(k, a.url));
       const b = k === "pr" ? badge(states[a.url]) : "";
-      return `${mark}${text} ${b}`.trimEnd();
+      let s = `${mark}${text} ${b}`.trimEnd();
+      if (idx === 0) s = `${FG[k]}${ICON[k]}${RESET} ` + s; // group icon on first item
+      chips.push({ s, w: visibleWidth(s) });
     });
-    const more = entries.length > shown.length ? ` ${DIM}+${entries.length - shown.length}${RESET}` : "";
-    segs.push(`${FG[k]}${ICON[k]}${RESET} ` + items.join("  ") + more);
   }
 
   // graceful gh degradation: warn (once suppressible) if PRs exist but gh can't help
-  if (showState && prUrls.length && !loadConfig().ghWarningDisabled) {
+  if (showState && prUrls.length && !cfg.ghWarningDisabled) {
     const meta = ghMeta();
+    let warn = "";
     if (!meta.installed) {
-      segs.push(`${Y}\u26a0 gh not installed${RESET}${DIM} \u00b7 PR state hidden \u00b7 https://cli.github.com \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`);
+      warn = `${Y}\u26a0 gh not installed${RESET}${DIM} \u00b7 PR state hidden \u00b7 https://cli.github.com \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
     } else if (meta.authed === false) {
-      segs.push(`${Y}\u26a0 gh not authorized${RESET}${DIM} \u00b7 run: gh auth login \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`);
+      warn = `${Y}\u26a0 gh not authorized${RESET}${DIM} \u00b7 run: gh auth login \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
     }
+    if (warn) chips.push({ s: warn, w: visibleWidth(warn) });
   }
-  process.stdout.write(segs.join("  ") + "\n");
+
+  process.stdout.write(composeLine(chips, hidden, resolveWidth(payload, cfg)) + "\n");
 }
 
 // ── settings.json wiring ─────────────────────────────────────────────────────
@@ -197,4 +297,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { badge, label };
+module.exports = { badge, label, visibleWidth, composeLine, resolveWidth };

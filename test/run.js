@@ -222,4 +222,54 @@ ok("parsePrUrl extracts owner/repo/number",
    (() => { const p = parsePrUrl("https://github.com/acme/widgets/pull/12"); return p && p.owner === "acme" && p.repo === "widgets" && p.number === "12"; })());
 ok("parsePrUrl rejects non-github.com hosts", parsePrUrl("https://ghe.io/acme/widgets/pull/12") === null);
 
+// width-aware truncation
+console.log("composeLine / visibleWidth:");
+const { visibleWidth, composeLine, resolveWidth } = require("../bin/cli.js");
+const link = (u, t) => `\x1b]8;;${u}\x1b\\${t}\x1b]8;;\x1b\\`;
+const DIMc = "\x1b[2m", RESETc = "\x1b[0m";
+const ESCc = String.fromCharCode(27);
+const visOf = (s) => s
+  .replace(new RegExp(ESCc + "\\]8;;[^" + ESCc + "]*" + ESCc + "\\\\", "g"), "")
+  .replace(new RegExp(ESCc + "\\[[0-9;]*m", "g"), "");
+
+ok("visibleWidth ignores SGR colors", visibleWidth(`${DIMc}draft${RESETc}`) === 5);
+ok("visibleWidth ignores OSC-8 hyperlink target",
+   visibleWidth(link("https://github.com/a/b/pull/123456789", "pr#1")) === 4);
+
+const mk = (s) => ({ s, w: visibleWidth(s) });
+const c1 = mk(link("https://github.com/x/y/pull/1", "y#1"));   // w=3
+const c2 = mk(link("https://github.com/x/y/pull/22", "y#22")); // w=4
+const c3 = mk(link("https://github.com/x/y/pull/333", "y#333")); // w=5
+const chips = [c1, c2, c3];
+
+ok("width 0 -> no truncation, all shown",
+   visOf(composeLine(chips, 0, 0)) === "y#1  y#22  y#333");
+ok("width 0 -> appends hidden +N counter",
+   visOf(composeLine(chips, 2, 0)) === "y#1  y#22  y#333 +2");
+ok("ample width -> unchanged",
+   visOf(composeLine(chips, 0, 100)) === "y#1  y#22  y#333");
+
+const tight = composeLine(chips, 0, 15); // 3+2+4+2+5 = 16 > 15
+ok("tight width drops a trailing chip and adds +N",
+   /\+\d+$/.test(visOf(tight)) && visOf(tight).indexOf("y#1") === 0);
+ok("truncated line never exceeds the budget (minus 1-col margin)",
+   visibleWidth(tight) <= 15 - 1);
+ok("very narrow width collapses to just the counter",
+   visOf(composeLine(chips, 0, 4)) === "+3");
+
+ok("resolveWidth honors CX_FOOTER_WIDTH override", (() => {
+  const prev = process.env.CX_FOOTER_WIDTH;
+  process.env.CX_FOOTER_WIDTH = "42";
+  const w = resolveWidth({}, {});
+  if (prev === undefined) delete process.env.CX_FOOTER_WIDTH; else process.env.CX_FOOTER_WIDTH = prev;
+  return w === 42;
+})());
+ok("resolveWidth honors config.width", (() => {
+  const prev = process.env.CX_FOOTER_WIDTH;
+  delete process.env.CX_FOOTER_WIDTH;
+  const w = resolveWidth({}, { width: 64 });
+  if (prev !== undefined) process.env.CX_FOOTER_WIDTH = prev;
+  return w === 64;
+})());
+
 console.log(`\n${pass} passed`);
