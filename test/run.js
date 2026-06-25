@@ -272,4 +272,27 @@ ok("resolveWidth honors config.width", (() => {
   return w === 64;
 })());
 
+// hyperlinks are opt-in (default off) so the footer's measured width matches its
+// visible width and the host's scrollback clamp can't cut mid-hyperlink.
+console.log("links opt-in / hostWidth:");
+const { hostWidth, linksEnabled } = require("../bin/cli.js");
+ok("links default OFF", (() => {
+  const a = process.env.CX_FOOTER_LINKS; delete process.env.CX_FOOTER_LINKS;
+  const r = linksEnabled({}) === false && linksEnabled({ links: true }) === true;
+  if (a !== undefined) process.env.CX_FOOTER_LINKS = a;
+  return r;
+})());
+ok("CX_FOOTER_LINKS=1 enables links", (() => {
+  const a = process.env.CX_FOOTER_LINKS; process.env.CX_FOOTER_LINKS = "1";
+  const r = linksEnabled({}) === true;
+  if (a === undefined) delete process.env.CX_FOOTER_LINKS; else process.env.CX_FOOTER_LINKS = a;
+  return r;
+})());
+ok("hostWidth counts OSC-8 bytes (unlike visibleWidth)", (() => {
+  const s = link("https://github.com/a/b/pull/123456789", "b#1");
+  return visibleWidth(s) === 3 && hostWidth(s) > 30;
+})());
+ok("hostWidth == visibleWidth for plain SGR-only text",
+   hostWidth(`${DIMc}closed${RESETc}`) === visibleWidth(`${DIMc}closed${RESETc}`));
+
 console.log(`\n${pass} passed`);

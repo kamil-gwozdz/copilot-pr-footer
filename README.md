@@ -62,15 +62,32 @@ Then open a new Copilot CLI session. That's it.
 - `CX_FOOTER_HINT=0` — hide the dim “no artifacts yet” placeholder
 - `CX_FOOTER_WIDTH=<n>` — pin the column budget (overrides auto-detect); `0` disables
   truncation entirely
+- `CX_FOOTER_LINKS=1` — make the PR/issue/gist labels clickable OSC-8 hyperlinks
+  (off by default — see below)
+
+## Clickable links are opt-in
+
+By default the labels are **plain text**. The Copilot CLI renders OSC-8 hyperlinks
+fine in the live status-line region, but when a footer row scrolls up into the
+terminal’s scrollback the host re-clamps it to the terminal width *counting the
+hyperlink escape bytes* (the URL is in there). A line that is only ~70 visible
+columns can be ~240 “columns” of bytes, so it gets cut **mid-hyperlink**, leaving a
+mangled label (`~pullsd#1503` → `~p`) and a dangling escape that corrupts the rows
+around it. Keeping labels plain keeps the measured width equal to the visible width,
+so the clamp is correct and the footer never breaks on scroll.
+
+Set `CX_FOOTER_LINKS=1` (or `{"links": true}` in config.json) to get clickable PRs.
+In link mode the footer is fitted using the host’s byte-counting model, so it stays
+intact on scroll — it just shows fewer items (with a `+N`) when the URLs don’t fit.
 
 ## Fitting the terminal width
 
 The footer keeps itself within the terminal width so it never gets chopped
-mid-label or mid-hyperlink. The status-line payload carries no width, so the width
-is auto-detected from the controlling TTY; when a session touches more artifacts
-than fit, the trailing ones collapse into a single dim `+N` counter at a clean
-boundary. If auto-detect ever misses (or you want a fixed budget), set
-`CX_FOOTER_WIDTH` or a `width` number in `~/.copilot/copilot-pr-footer/config.json`.
+mid-label. The status-line payload carries no width, so the width is auto-detected
+from the controlling TTY; when a session touches more artifacts than fit, the
+trailing ones collapse into a single dim `+N` counter at a clean boundary. If
+auto-detect ever misses (or you want a fixed budget), set `CX_FOOTER_WIDTH` or a
+`width` number in `~/.copilot/copilot-pr-footer/config.json`.
 
 ## How it works
 

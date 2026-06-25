@@ -22,7 +22,21 @@ const RESET = "\x1b[0m", DIM = "\x1b[2m";
 const MARK = { created: `${G}+${RESET}`, updated: `${B}~${RESET}` };
 const MAX = 6;
 
-const link = (url, text) => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+// OSC-8 hyperlinks are opt-in. The Copilot CLI renders them fine in the live
+// status-line region, but when a footer row scrolls into the terminal scrollback
+// the host re-clamps it to the terminal width *counting the OSC-8 escape bytes*
+// (URL included) — so it cuts mid-hyperlink and leaves a dangling escape that
+// mangles following rows. Plain-text labels keep the footer's measured width equal
+// to its visible width, so the host's clamp is correct. Enable links (clickable
+// PRs) via CX_FOOTER_LINKS=1 or {"links": true} in config.json.
+function linksEnabled(cfg) {
+  const env = process.env.CX_FOOTER_LINKS;
+  if (env !== undefined) return env === "1" || env.toLowerCase() === "true";
+  return !!(cfg && cfg.links);
+}
+let LINKS = false; // set per-render from config/env
+const link = (url, text) =>
+  LINKS ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text;
 
 function label(kind, url) {
   const p = url.split("/");
@@ -61,6 +75,14 @@ const OSC8_RE = new RegExp(ESC + "\\]8;;[^" + ESC + "]*" + ESC + "\\\\", "g");
 const SGR_RE = new RegExp(ESC + "\\[[0-9;]*m", "g");
 function visibleWidth(s) {
   return Array.from(s.replace(OSC8_RE, "").replace(SGR_RE, "")).length;
+}
+
+// Width as the host counts it when clamping a scrolled row: it understands SGR
+// color codes (zero-width) but NOT OSC-8 hyperlinks, whose bytes it counts. We fit
+// to this so the emitted line never exceeds the terminal width in the host's own
+// accounting — preventing the mid-hyperlink cut even when links are enabled.
+function hostWidth(s) {
+  return Array.from(s.replace(SGR_RE, "")).length;
 }
 
 // Best-effort terminal columns. The statusLine payload carries no width and the
@@ -169,6 +191,7 @@ function render() {
     by[k].sort((x, y) => (x.origin === "created" ? 0 : 1) - (y.origin === "created" ? 0 : 1));
 
   const cfg = loadConfig();
+  LINKS = linksEnabled(cfg);
   const showState = process.env.CX_FOOTER_STATE !== "0";
   const prUrls = (by.pr || []).map((a) => a.url);
   const states = showState ? prStates(prUrls) : {};
@@ -186,7 +209,7 @@ function render() {
       const b = k === "pr" ? badge(states[a.url]) : "";
       let s = `${mark}${text} ${b}`.trimEnd();
       if (idx === 0) s = `${FG[k]}${ICON[k]}${RESET} ` + s; // group icon on first item
-      chips.push({ s, w: visibleWidth(s) });
+      chips.push({ s, w: hostWidth(s) });
     });
   }
 
@@ -199,7 +222,7 @@ function render() {
     } else if (meta.authed === false) {
       warn = `${Y}\u26a0 gh not authorized${RESET}${DIM} \u00b7 run: gh auth login \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
     }
-    if (warn) chips.push({ s: warn, w: visibleWidth(warn) });
+    if (warn) chips.push({ s: warn, w: hostWidth(warn) });
   }
 
   process.stdout.write(composeLine(chips, hidden, resolveWidth(payload, cfg)) + "\n");
@@ -297,4 +320,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { badge, label, visibleWidth, composeLine, resolveWidth };
+module.exports = { badge, label, visibleWidth, hostWidth, composeLine, resolveWidth, linksEnabled };
