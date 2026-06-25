@@ -257,6 +257,19 @@ ok("truncated line never exceeds the budget (minus 1-col margin)",
 ok("very narrow width collapses to just the counter",
    visOf(composeLine(chips, 0, 4)) === "+3");
 
+// closed/merged PRs (prio>=2) are rolled up first, keeping the active chip
+const pc = (s, prio) => ({ s, w: visibleWidth(s), prio });
+const active = pc(link("https://github.com/x/y/pull/1", "y#1"), 0);   // w=3
+const closedA = pc(link("https://github.com/x/y/pull/22", "y#22 closed"), 2);  // w=11
+const closedB = pc(link("https://github.com/x/y/pull/333", "y#333 closed"), 2); // w=12
+ok("closed PRs roll up into +N before the active one is touched", (() => {
+  // budget too small for all three, but the active chip easily fits alone
+  const out = visOf(composeLine([active, closedA, closedB], 0, 14));
+  return out === "y#1 +2";
+})());
+ok("a closed PR still shows if everything fits",
+   visOf(composeLine([active, closedA], 0, 40)) === "y#1  y#22 closed");
+
 ok("resolveWidth honors CX_FOOTER_WIDTH override", (() => {
   const prev = process.env.CX_FOOTER_WIDTH;
   process.env.CX_FOOTER_WIDTH = "42";
@@ -272,19 +285,19 @@ ok("resolveWidth honors config.width", (() => {
   return w === 64;
 })());
 
-// hyperlinks are opt-in (default off) so the footer's measured width matches its
-// visible width and the host's scrollback clamp can't cut mid-hyperlink.
-console.log("links opt-in / hostWidth:");
+// hyperlinks are ON by default; we fit using hostWidth (which counts OSC-8 bytes)
+// so the host's scrollback clamp can't cut mid-hyperlink.
+console.log("links default-on / hostWidth:");
 const { hostWidth, linksEnabled } = require("../bin/cli.js");
-ok("links default OFF", (() => {
+ok("links default ON", (() => {
   const a = process.env.CX_FOOTER_LINKS; delete process.env.CX_FOOTER_LINKS;
-  const r = linksEnabled({}) === false && linksEnabled({ links: true }) === true;
+  const r = linksEnabled({}) === true && linksEnabled({ links: false }) === false;
   if (a !== undefined) process.env.CX_FOOTER_LINKS = a;
   return r;
 })());
-ok("CX_FOOTER_LINKS=1 enables links", (() => {
-  const a = process.env.CX_FOOTER_LINKS; process.env.CX_FOOTER_LINKS = "1";
-  const r = linksEnabled({}) === true;
+ok("CX_FOOTER_LINKS=0 disables links", (() => {
+  const a = process.env.CX_FOOTER_LINKS; process.env.CX_FOOTER_LINKS = "0";
+  const r = linksEnabled({}) === false;
   if (a === undefined) delete process.env.CX_FOOTER_LINKS; else process.env.CX_FOOTER_LINKS = a;
   return r;
 })());

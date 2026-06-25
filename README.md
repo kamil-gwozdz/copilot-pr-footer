@@ -62,32 +62,38 @@ Then open a new Copilot CLI session. That's it.
 - `CX_FOOTER_HINT=0` — hide the dim “no artifacts yet” placeholder
 - `CX_FOOTER_WIDTH=<n>` — pin the column budget (overrides auto-detect); `0` disables
   truncation entirely
-- `CX_FOOTER_LINKS=1` — make the PR/issue/gist labels clickable OSC-8 hyperlinks
-  (off by default — see below)
+- `CX_FOOTER_LINKS=0` — turn the PR/issue/gist labels into plain text (clickable
+  OSC-8 hyperlinks are on by default — see below)
 
-## Clickable links are opt-in
+## Clickable links & trimming
 
-By default the labels are **plain text**. The Copilot CLI renders OSC-8 hyperlinks
-fine in the live status-line region, but when a footer row scrolls up into the
-terminal’s scrollback the host re-clamps it to the terminal width *counting the
-hyperlink escape bytes* (the URL is in there). A line that is only ~70 visible
-columns can be ~240 “columns” of bytes, so it gets cut **mid-hyperlink**, leaving a
-mangled label (`~pullsd#1503` → `~p`) and a dangling escape that corrupts the rows
-around it. Keeping labels plain keeps the measured width equal to the visible width,
-so the clamp is correct and the footer never breaks on scroll.
+The labels are **clickable OSC-8 hyperlinks** by default. The catch: the Copilot CLI
+renders them fine in the live status-line region, but when a footer row scrolls up
+into the terminal scrollback the host re-clamps it to the terminal width *counting
+the hyperlink escape bytes* (the URL is in there). A line that is only ~70 visible
+columns can be ~240 “columns” of bytes — so a naive footer gets cut **mid-hyperlink**
+(`~pullsd#1503` → `~p`) with a dangling escape that corrupts the rows around it.
 
-Set `CX_FOOTER_LINKS=1` (or `{"links": true}` in config.json) to get clickable PRs.
-In link mode the footer is fitted using the host’s byte-counting model, so it stays
-intact on scroll — it just shows fewer items (with a `+N`) when the URLs don’t fit.
+To stay safe the footer is fitted using that same byte-counting model, so it never
+exceeds the host’s budget and is never cut mid-link. When everything doesn’t fit, the
+least useful items are rolled up into a single dim `+N` counter — **closed/merged PRs
+go first** (as a group), keeping the active and just-created ones in view:
+
+```
+⎇ +pullsd#1547 draft ci✓ rev? +2     ← active PR shown, 2 closed PRs rolled up
+```
+
+If even one hyperlink is too wide for the terminal, the footer automatically falls
+back to plain-text labels for that render so the labels stay visible. Set
+`CX_FOOTER_LINKS=0` (or `{"links": false}` in config.json) to always use plain text.
 
 ## Fitting the terminal width
 
 The footer keeps itself within the terminal width so it never gets chopped
 mid-label. The status-line payload carries no width, so the width is auto-detected
-from the controlling TTY; when a session touches more artifacts than fit, the
-trailing ones collapse into a single dim `+N` counter at a clean boundary. If
-auto-detect ever misses (or you want a fixed budget), set `CX_FOOTER_WIDTH` or a
-`width` number in `~/.copilot/copilot-pr-footer/config.json`.
+from the controlling TTY. If auto-detect ever misses (or you want a fixed budget),
+set `CX_FOOTER_WIDTH` or a `width` number in
+`~/.copilot/copilot-pr-footer/config.json`.
 
 ## How it works
 

@@ -22,19 +22,19 @@ const RESET = "\x1b[0m", DIM = "\x1b[2m";
 const MARK = { created: `${G}+${RESET}`, updated: `${B}~${RESET}` };
 const MAX = 6;
 
-// OSC-8 hyperlinks are opt-in. The Copilot CLI renders them fine in the live
-// status-line region, but when a footer row scrolls into the terminal scrollback
-// the host re-clamps it to the terminal width *counting the OSC-8 escape bytes*
-// (URL included) — so it cuts mid-hyperlink and leaves a dangling escape that
-// mangles following rows. Plain-text labels keep the footer's measured width equal
-// to its visible width, so the host's clamp is correct. Enable links (clickable
-// PRs) via CX_FOOTER_LINKS=1 or {"links": true} in config.json.
+// OSC-8 hyperlinks are ON by default (clickable PRs). The Copilot CLI renders them
+// fine in the live status-line region, but when a footer row scrolls into the
+// terminal scrollback the host re-clamps it to the terminal width *counting the
+// OSC-8 escape bytes* (URL included). To stay safe we fit the line using that same
+// byte-counting model (see hostWidth), so the footer never exceeds the host's budget
+// and is never cut mid-hyperlink. Opt out with CX_FOOTER_LINKS=0 or {"links": false}.
 function linksEnabled(cfg) {
   const env = process.env.CX_FOOTER_LINKS;
-  if (env !== undefined) return env === "1" || env.toLowerCase() === "true";
-  return !!(cfg && cfg.links);
+  if (env !== undefined) return !(env === "0" || env.toLowerCase() === "false");
+  if (cfg && cfg.links === false) return false;
+  return true;
 }
-let LINKS = false; // set per-render from config/env
+let LINKS = true; // set per-render from config/env
 const link = (url, text) =>
   LINKS ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text;
 
@@ -131,41 +131,48 @@ function resolveWidth(payload, cfg) {
   return ttyCols();
 }
 
-// Join chips (each {s, w}) into one line that fits `width` columns. Drops trailing
-// chips that don't fit and appends a single dim "+N" overflow counter, always at a
-// chip boundary so a hyperlink/label is never cut mid-escape. `hidden` is the count
-// of artifacts already omitted (per-kind cap). width<=0 disables truncation.
+// Compose chips (each {s, w, prio}) into one line that fits `width` columns. When the
+// full line overflows, the least-important chips are rolled up into a single dim "+N"
+// counter at a chip boundary (never mid-escape). Priority: closed/merged PRs (prio>=2)
+// are collapsed first — as a group — keeping the active/created artifacts; then, if
+// still over budget, the remaining chips are dropped from the tail. `hidden` is the
+// count already omitted upstream (per-kind cap). width<=0 disables truncation.
 const SEP = "  ";
 function composeLine(chips, hidden, width) {
   const marker = (n) => `${DIM}+${n}${RESET}`;
-  const markerVis = (n) => 2 + String(n).length; // " +" + digits
-  const joinAll = () => {
-    let s = chips.map((c) => c.s).join(SEP);
-    if (hidden > 0) s += ` ${marker(hidden)}`;
-    return s;
+  const render = (sel) => {
+    let line = sel.map((c) => c.s).join(SEP);
+    const dropped = chips.length - sel.length + hidden;
+    if (dropped > 0) line += `${sel.length ? " " : ""}${marker(dropped)}`;
+    return line;
   };
-  if (!width || width <= 0) return joinAll();
+  let sel = chips.map((c, i) => ({ ...c, i }));
+  if (!width || width <= 0) return render(sel);
 
   const budget = Math.max(1, width - 1); // leave the last column untouched
-  const fullVis = chips.reduce((n, c) => n + c.w, 0)
-    + Math.max(0, chips.length - 1) * SEP.length
-    + (hidden > 0 ? markerVis(hidden) : 0);
-  if (fullVis <= budget) return joinAll();
+  const widthOf = (s) => s.reduce((n, c) => n + c.w, 0) + Math.max(0, s.length - 1) * SEP.length;
+  const reserveOf = (s) => {
+    const d = chips.length - s.length + hidden;
+    return d > 0 ? (s.length ? 1 : 0) + 1 + String(d).length : 0; // [" "]"+"<digits>
+  };
+  const fits = (s) => widthOf(s) + reserveOf(s) <= budget;
 
-  const shown = [];
-  let used = 0;
-  for (let i = 0; i < chips.length; i++) {
-    const lead = shown.length ? SEP.length : 0;
-    const willDrop = hidden + (chips.length - 1 - i);
-    const reserve = willDrop > 0 ? markerVis(willDrop) : 0;
-    if (used + lead + chips[i].w + reserve <= budget) {
-      shown.push(chips[i].s); used += lead + chips[i].w;
-    } else break;
+  if (!fits(sel)) {
+    // roll up all closed/merged PRs first, but only if something else anchors the line
+    const done = sel.filter((c) => (c.prio || 0) >= 2);
+    if (done.length && sel.length - done.length >= 1) sel = sel.filter((c) => (c.prio || 0) < 2);
+    // drop remaining worst-first (highest prio, then trailing) until it fits
+    while (sel.length && !fits(sel)) {
+      let w = 0;
+      for (let j = 1; j < sel.length; j++) {
+        const a = sel[j], b = sel[w];
+        if ((a.prio || 0) > (b.prio || 0) || ((a.prio || 0) === (b.prio || 0) && a.i > b.i)) w = j;
+      }
+      sel.splice(w, 1);
+    }
   }
-  const total = hidden + (chips.length - shown.length);
-  let line = shown.join(SEP);
-  if (total > 0) line += `${shown.length ? " " : ""}${marker(total)}`;
-  return line;
+  sel.sort((a, b) => a.i - b.i);
+  return render(sel);
 }
 
 // ── render: the statusLine command ───────────────────────────────────────────
@@ -191,41 +198,57 @@ function render() {
     by[k].sort((x, y) => (x.origin === "created" ? 0 : 1) - (y.origin === "created" ? 0 : 1));
 
   const cfg = loadConfig();
-  LINKS = linksEnabled(cfg);
   const showState = process.env.CX_FOOTER_STATE !== "0";
   const prUrls = (by.pr || []).map((a) => a.url);
   const states = showState ? prStates(prUrls) : {};
 
-  const chips = [];
-  let hidden = 0;
-  for (const k of ["pr", "issue", "gist", "codespace"]) {
-    const entries = by[k];
-    if (!entries) continue;
-    const shown = entries.slice(0, MAX);
-    hidden += entries.length - shown.length;
-    shown.forEach((a, idx) => {
-      const mark = MARK[a.origin] || "";
-      const text = link(a.url, label(k, a.url));
-      const b = k === "pr" ? badge(states[a.url]) : "";
-      let s = `${mark}${text} ${b}`.trimEnd();
-      if (idx === 0) s = `${FG[k]}${ICON[k]}${RESET} ` + s; // group icon on first item
-      chips.push({ s, w: hostWidth(s) });
-    });
-  }
-
-  // graceful gh degradation: warn (once suppressible) if PRs exist but gh can't help
-  if (showState && prUrls.length && !cfg.ghWarningDisabled) {
-    const meta = ghMeta();
-    let warn = "";
-    if (!meta.installed) {
-      warn = `${Y}\u26a0 gh not installed${RESET}${DIM} \u00b7 PR state hidden \u00b7 https://cli.github.com \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
-    } else if (meta.authed === false) {
-      warn = `${Y}\u26a0 gh not authorized${RESET}${DIM} \u00b7 run: gh auth login \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
+  const buildChips = (withLinks) => {
+    LINKS = withLinks;
+    const chips = [];
+    let hidden = 0;
+    for (const k of ["pr", "issue", "gist", "codespace"]) {
+      const entries = by[k];
+      if (!entries) continue;
+      const shown = entries.slice(0, MAX);
+      hidden += entries.length - shown.length;
+      shown.forEach((a, idx) => {
+        const mark = MARK[a.origin] || "";
+        const text = link(a.url, label(k, a.url));
+        const st = k === "pr" ? states[a.url] : null;
+        const b = k === "pr" ? badge(st) : "";
+        let s = `${mark}${text} ${b}`.trimEnd();
+        if (idx === 0) s = `${FG[k]}${ICON[k]}${RESET} ` + s; // group icon on first item
+        const term = st && /^(CLOSED|MERGED)$/i.test(String(st.state || ""));
+        chips.push({ s, w: hostWidth(s), prio: term ? 2 : 0 });
+      });
     }
-    if (warn) chips.push({ s: warn, w: hostWidth(warn) });
-  }
+    // graceful gh degradation: warn (once suppressible) if PRs exist but gh can't help
+    if (showState && prUrls.length && !cfg.ghWarningDisabled) {
+      const meta = ghMeta();
+      let warn = "";
+      if (!meta.installed) {
+        warn = `${Y}\u26a0 gh not installed${RESET}${DIM} \u00b7 PR state hidden \u00b7 https://cli.github.com \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
+      } else if (meta.authed === false) {
+        warn = `${Y}\u26a0 gh not authorized${RESET}${DIM} \u00b7 run: gh auth login \u00b7 hide: copilot-pr-footer disable-gh-warning${RESET}`;
+      }
+      if (warn) chips.push({ s: warn, w: hostWidth(warn), prio: 0 });
+    }
+    return { chips, hidden };
+  };
 
-  process.stdout.write(composeLine(chips, hidden, resolveWidth(payload, cfg)) + "\n");
+  const width = resolveWidth(payload, cfg);
+  const wantLinks = linksEnabled(cfg);
+  let { chips, hidden } = buildChips(wantLinks);
+  let line = composeLine(chips, hidden, width);
+  // If hyperlinks are so wide they collapse the line to nothing but a counter, fall
+  // back to plain-text labels for this render so at least the labels stay visible.
+  const onlyCounter = new RegExp("^(?:" + ESC + "\\[[0-9;]*m)*\\+\\d+(?:" + ESC + "\\[[0-9;]*m)*$");
+  if (wantLinks && onlyCounter.test(line)) {
+    const plain = buildChips(false);
+    const plainLine = composeLine(plain.chips, plain.hidden, width);
+    if (!onlyCounter.test(plainLine)) line = plainLine;
+  }
+  process.stdout.write(line + "\n");
 }
 
 // ── settings.json wiring ─────────────────────────────────────────────────────
