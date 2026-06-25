@@ -59,7 +59,8 @@ Then open a new Copilot CLI session. That's it.
 ## Configuration (env vars)
 
 - `CX_FOOTER_STATE=0` — disable live PR-state badges (just list artifacts)
-- `CX_FOOTER_HINT=0` — hide the dim “no artifacts yet” placeholder
+- `CX_FOOTER_HINT=0` — hide the dim placeholder shown when a session has no artifacts
+  (`loading…` while the event log is still being read, then `no artifacts yet`)
 - `CX_FOOTER_WIDTH=<n>` — pin the column budget (overrides auto-detect); `0` disables
   truncation entirely
 - `CX_FOOTER_LINKS=0` — turn the PR/issue/gist labels into plain text (clickable

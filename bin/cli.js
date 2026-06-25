@@ -8,7 +8,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const {
-  sessionArtifacts, prStates, fetchAndCache, ghInstalled, ghMeta,
+  sessionArtifacts, eventsReady, prStates, fetchAndCache, ghInstalled, ghMeta,
   loadConfig, saveConfig,
 } = require("../lib/artifacts");
 
@@ -187,8 +187,12 @@ function render() {
 
   const arts = sessionArtifacts(tpath);
   if (!arts.length) {
-    if (process.env.CX_FOOTER_HINT !== "0")
-      process.stdout.write(`${DIM}\u2387 no artifacts yet${RESET}\n`);
+    if (process.env.CX_FOOTER_HINT !== "0") {
+      // Distinguish "still reading the session" (just started/resumed, event log not
+      // written yet) from "session has no artifacts" — show a loading hint for the former.
+      const msg = eventsReady(tpath) ? "\u2387 no artifacts yet" : "\u2387 loading\u2026";
+      process.stdout.write(`${DIM}${msg}${RESET}\n`);
+    }
     return;
   }
 

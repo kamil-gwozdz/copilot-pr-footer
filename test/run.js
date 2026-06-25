@@ -88,6 +88,24 @@ ok("constructs URL from --repo + number", arts.length === 1
 ok("empty transcript path -> []", sessionArtifacts("").length === 0);
 ok("missing dir -> []", sessionArtifacts("/no/such/dir").length === 0);
 
+// 7b) eventsReady distinguishes "still loading" from "ready" (drives the loading hint)
+const { eventsReady } = require("../lib/artifacts");
+ok("eventsReady false for empty/missing path", eventsReady("") === false && eventsReady("/no/such/dir") === false);
+ok("eventsReady false when events.jsonl is missing", (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cxpf-er-"));
+  return eventsReady(d) === false;
+})());
+ok("eventsReady false when events.jsonl is empty (still being written)", (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cxpf-er-"));
+  fs.writeFileSync(path.join(d, "events.jsonl"), "");
+  return eventsReady(d) === false;
+})());
+ok("eventsReady true once events.jsonl has content", (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cxpf-er-"));
+  fs.writeFileSync(path.join(d, "events.jsonl"), start("a", "echo hi"));
+  return eventsReady(d) === true;
+})());
+
 // 8) created gist on github.com
 dir = writeSession([
   start("h", "GH_HOST=github.com gh gist create notes.md"),
