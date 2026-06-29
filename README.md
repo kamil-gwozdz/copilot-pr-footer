@@ -111,6 +111,10 @@ JSON payload on stdin that includes `session_id` and `transcript_path`. This too
      (`{owner/repo, number}`) or an explicit url field.
    - **Remote shell-exec tools** — tools that run a command elsewhere (e.g. in a
      codespace) are treated like a local `gh` command.
+   - **`git push`** — pushing a branch that already has a PR has no PR URL in the
+    command, so the PR is surfaced by resolving the pushed branch to its PR via
+    `gh pr view` (cached). This appears as an **updated** PR. Disable with
+    `{ "detectPush": false }` in config.json.
 2. Counts a URL only when it was a real **create** (`gh pr/issue/gist create`, or a
    `create_*` tool → created) or a **mutation** (`gh pr/issue …` edit/comment/review/
    merge/ready/close/…, or an `update_*`/`merge_*`/`add_*_comment` tool → updated).

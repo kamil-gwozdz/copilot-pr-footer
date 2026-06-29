@@ -196,15 +196,34 @@ function render() {
     return;
   }
 
+  // Resolve push:// pseudo-PRs (a `git push` to a branch that has a PR) to real urls
+  // via the cache, drop ones still unresolved (no PR yet / off-host), then dedupe.
+  const showState = process.env.CX_FOOTER_STATE !== "0";
+  const states = showState ? prStates(arts.filter((a) => a.kind === "pr").map((a) => a.url)) : {};
+  const seen = new Set();
+  const resolved = [];
+  for (const a of arts) {
+    if (a.kind === "pr" && a.url.startsWith("push://")) {
+      const real = states[a.url] && states[a.url].url;
+      if (!real) continue;
+      a.url = real;
+    }
+    if (seen.has(a.url)) continue;
+    seen.add(a.url);
+    resolved.push(a);
+  }
+  if (!resolved.length) {
+    if (process.env.CX_FOOTER_HINT !== "0") process.stdout.write(`${DIM}\u2387 no artifacts yet${RESET}\n`);
+    return;
+  }
+
   const by = {};
-  for (const a of arts) (by[a.kind] = by[a.kind] || []).push(a);
+  for (const a of resolved) (by[a.kind] = by[a.kind] || []).push(a);
   for (const k of Object.keys(by))
     by[k].sort((x, y) => (x.origin === "created" ? 0 : 1) - (y.origin === "created" ? 0 : 1));
 
   const cfg = loadConfig();
-  const showState = process.env.CX_FOOTER_STATE !== "0";
   const prUrls = (by.pr || []).map((a) => a.url);
-  const states = showState ? prStates(prUrls) : {};
 
   const buildChips = (withLinks) => {
     LINKS = withLinks;

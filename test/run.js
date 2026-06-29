@@ -215,8 +215,45 @@ ok("heuristic:false ignores unknown tools but keeps GitHub MCP defaults",
 process.env.HOME = prevHome; if (prevUP === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUP;
 delete require.cache[require.resolve("../lib/artifacts")];
 
-// PR state badges (incl. closed)
-console.log("badge:");
+// 18) `git push origin <branch>` surfaces a push:// pseudo-PR (resolved later via gh)
+dir = writeSession([
+  start("p1", "cd ~/Work/graph-hopper && git push origin kamil-gwozdz/foo 2>&1 | tail -8"),
+  complete("p1", "Everything up-to-date"),
+]);
+arts = sessionArtifacts(dir);
+ok("git push surfaces a push:// pseudo-PR (updated)", arts.length === 1 && arts[0].kind === "pr"
+   && arts[0].origin === "updated" && arts[0].url === "push://~/Work/graph-hopper|kamil-gwozdz/foo");
+
+// 19) push detection can be disabled via config.detectPush=false
+const cfgDir3 = fs.mkdtempSync(path.join(os.tmpdir(), "cxpf-cfg3-"));
+process.env.HOME = cfgDir3; process.env.USERPROFILE = cfgDir3;
+delete require.cache[require.resolve("../lib/artifacts")];
+const fresh3 = require("../lib/artifacts");
+fs.mkdirSync(path.join(cfgDir3, ".copilot", "copilot-pr-footer"), { recursive: true });
+fs.writeFileSync(path.join(cfgDir3, ".copilot", "copilot-pr-footer", "config.json"),
+  JSON.stringify({ detectPush: false }));
+dir = writeSession([start("p2", "git push origin main"), complete("p2", "")]);
+arts = fresh3.sessionArtifacts(dir);
+ok("detectPush:false ignores git push", arts.length === 0);
+process.env.HOME = prevHome; if (prevUP === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUP;
+delete require.cache[require.resolve("../lib/artifacts")];
+
+// 20) pushTargetsFrom parses dir + branch (and refspec dst / -C / bare push)
+const { pushTargetsFrom } = require("../lib/artifacts");
+ok("parses cd + explicit branch", (() => {
+  const t = pushTargetsFrom("cd /x && git push origin feature/y");
+  return t.length === 1 && t[0].dir === "/x" && t[0].branch === "feature/y";
+})());
+ok("parses src:dst refspec to dst, skips -u flag", (() => {
+  const t = pushTargetsFrom("git -C /r push -u origin HEAD:main");
+  return t.length === 1 && t[0].dir === "/r" && t[0].branch === "main";
+})());
+ok("bare `git push` -> empty branch (current)", (() => {
+  const t = pushTargetsFrom("git push"); return t.length === 1 && t[0].branch === "";
+})());
+ok("non-push commands yield nothing", pushTargetsFrom("git status").length === 0);
+
+
 const { badge } = require("../bin/cli.js");
 const strip = (s) => s.replace(new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g"), "");
 ok("merged -> merged", strip(badge({ state: "MERGED" })) === "merged");
