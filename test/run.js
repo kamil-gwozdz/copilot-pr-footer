@@ -273,6 +273,12 @@ ok("EXPECTED -> running", rollupToCi("EXPECTED") === "running");
 ok("FAILURE -> failed", rollupToCi("FAILURE") === "failed");
 ok("ERROR -> failed", rollupToCi("ERROR") === "failed");
 ok("null/none -> none", rollupToCi(null) === "none");
+ok("pending overrides FAILURE -> running", rollupToCi("FAILURE", true) === "running");
+ok("no pending keeps FAILURE -> failed", rollupToCi("FAILURE", false) === "failed");
+const { rollupHasPending } = require("../lib/artifacts");
+const prCtx = (crCounts) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { checkRunCountsByState: crCounts, statusContextCountsByState: [] } } } }] } });
+ok("rollupHasPending true when a check is IN_PROGRESS", rollupHasPending(prCtx([{ state: "IN_PROGRESS", count: 9 }, { state: "FAILURE", count: 1 }])) === true);
+ok("rollupHasPending false when all checks settled", rollupHasPending(prCtx([{ state: "SUCCESS", count: 200 }, { state: "FAILURE", count: 1 }])) === false);
 ok("parsePrUrl extracts owner/repo/number",
    (() => { const p = parsePrUrl("https://github.com/acme/widgets/pull/12"); return p && p.owner === "acme" && p.repo === "widgets" && p.number === "12"; })());
 ok("parsePrUrl rejects non-github.com hosts", parsePrUrl("https://ghe.io/acme/widgets/pull/12") === null);
